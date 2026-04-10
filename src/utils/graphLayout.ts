@@ -1,15 +1,26 @@
 import type { GitCommit, GitBranch, LayoutNode, LayoutEdge } from '../types/git';
 
-const NODE_SPACING_X = 80;
-const NODE_SPACING_Y = 70;
+const COLUMN_WIDTH = 200;
+const ROW_HEIGHT = 90;
+const GRAPH_LEFT_PAD = 80;
 
-interface LayoutResult {
+export interface LayoutResult {
   nodes: LayoutNode[];
   edges: LayoutEdge[];
   width: number;
   height: number;
+  columnCount: number;
 }
 
+/**
+ * Layout algorithm that keeps branch lanes tight.
+ *
+ * For each commit (newest -> oldest) we assign a column:
+ * - If this commit is a branch head -> give it the column reserved for that branch
+ * - Otherwise inherit the column from its child (the commit that lists us as parent[0])
+ *
+ * Merge parents (parent index > 0) get their own lane if they don't already have one.
+ */
 export function computeGraphLayout(
   commits: Record<string, GitCommit>,
   commitOrder: string[],
@@ -18,87 +29,113 @@ export function computeGraphLayout(
   const nodes: LayoutNode[] = [];
   const edges: LayoutEdge[] = [];
 
-  // Assign columns to branches
-  const branchColumns: Record<string, number> = {};
-  let nextColumn = 0;
+  // Order: newest first (for top-down display)
+  const ordered = [...commitOrder].reverse();
 
-  // main always gets column 0
-  if (branches['main']) {
-    branchColumns['main'] = 0;
-    nextColumn = 1;
+  // Assign fixed columns to branches. main/master = 0, rest follow.
+  const branchColumn: Record<string, number> = {};
+  let nextCol = 0;
+  const sortedBranches = Object.keys(branches).sort((a, b) => {
+    if (a === 'main' || a === 'master') return -1;
+    if (b === 'main' || b === 'master') return 1;
+    return 0;
+  });
+  for (const name of sortedBranches) {
+    branchColumn[name] = nextCol++;
   }
 
-  for (const branchName of Object.keys(branches)) {
-    if (branchName === 'main') continue;
-    if (branchColumns[branchName] === undefined) {
-      branchColumns[branchName] = nextColumn++;
+  // Map: commitId -> column
+  const commitColumn: Record<string, number> = {};
+
+  // Mark branch-head commits
+  const branchHeadSet = new Set<string>();
+  for (const b of Object.values(branches)) {
+    branchHeadSet.add(b.headCommitId);
+    commitColumn[b.headCommitId] = branchColumn[b.name] ?? 0;
+  }
+
+  // First-child map: for each commit, which child has us as parent[0]?
+  // This lets non-head commits inherit their child's column.
+  const firstChildOf: Record<string, string> = {};
+  for (const id of ordered) {
+    const c = commits[id];
+    if (!c) continue;
+    if (c.parentIds[0] && !firstChildOf[c.parentIds[0]]) {
+      firstChildOf[c.parentIds[0]] = id;
     }
   }
 
-  // Build layout nodes — newest at top (reverse order)
-  const orderedIds = [...commitOrder].reverse();
+  // Assign columns: walk newest -> oldest
+  for (const id of ordered) {
+    if (commitColumn[id] !== undefined) continue;
 
-  for (let row = 0; row < orderedIds.length; row++) {
-    const commitId = orderedIds[row];
-    const commit = commits[commitId];
-    if (!commit) continue;
+    const c = commits[id];
+    if (!c) continue;
 
-    const column = branchColumns[commit.branch] ?? 0;
+    // Try inheriting from child
+    const child = firstChildOf[id];
+    if (child && commitColumn[child] !== undefined) {
+      commitColumn[id] = commitColumn[child];
+    } else {
+      // Fall back to branch column
+      commitColumn[id] = branchColumn[c.branch] ?? 0;
+    }
+  }
 
+  // Build nodes
+  for (let row = 0; row < ordered.length; row++) {
+    const id = ordered[row];
+    const col = commitColumn[id] ?? 0;
     nodes.push({
-      id: commitId,
-      x: 60 + column * NODE_SPACING_X,
-      y: 40 + row * NODE_SPACING_Y,
-      column,
+      id,
+      x: GRAPH_LEFT_PAD + col * COLUMN_WIDTH + COLUMN_WIDTH / 2,
+      y: 60 + row * ROW_HEIGHT,
+      column: col,
       row,
     });
   }
 
-  // Build node lookup
   const nodeMap = new Map<string, LayoutNode>();
-  for (const node of nodes) {
-    nodeMap.set(node.id, node);
-  }
+  for (const n of nodes) nodeMap.set(n.id, n);
 
-  // Build edges from parent relationships
-  for (const commitId of commitOrder) {
-    const commit = commits[commitId];
-    if (!commit) continue;
-
-    for (let i = 0; i < commit.parentIds.length; i++) {
-      const parentId = commit.parentIds[i];
-      if (nodeMap.has(parentId) && nodeMap.has(commitId)) {
+  // Build edges
+  for (const id of commitOrder) {
+    const c = commits[id];
+    if (!c) continue;
+    for (let i = 0; i < c.parentIds.length; i++) {
+      const pid = c.parentIds[i];
+      if (nodeMap.has(pid) && nodeMap.has(id)) {
         edges.push({
-          source: parentId,
-          target: commitId,
+          source: pid,
+          target: id,
           type: i > 0 ? 'merge' : 'normal',
+          sourceBranch: commits[pid]?.branch || c.branch,
         });
       }
     }
   }
 
-  const maxColumn = Math.max(0, ...nodes.map((n) => n.column));
-  const width = 120 + maxColumn * NODE_SPACING_X;
-  const height = 80 + orderedIds.length * NODE_SPACING_Y;
+  const maxCol = Math.max(0, ...nodes.map((n) => n.column));
+  const graphWidth = GRAPH_LEFT_PAD + (maxCol + 1) * COLUMN_WIDTH + 80;
+  const height = 90 + ordered.length * ROW_HEIGHT;
 
-  return { nodes, edges, width, height };
+  return { nodes, edges, width: graphWidth, height, columnCount: maxCol + 1 };
 }
 
 export function buildEdgePath(
-  sourceNode: LayoutNode,
-  targetNode: LayoutNode,
+  source: LayoutNode,
+  target: LayoutNode,
 ): string {
-  const sx = sourceNode.x;
-  const sy = sourceNode.y;
-  const tx = targetNode.x;
-  const ty = targetNode.y;
+  const sx = source.x;
+  const sy = source.y;
+  const tx = target.x;
+  const ty = target.y;
 
   if (sx === tx) {
-    // Straight vertical line
     return `M ${sx} ${sy} L ${tx} ${ty}`;
   }
 
-  // Curved path for cross-branch edges
+  // n8n-style smooth cubic bezier: curve out horizontally then ease into target
   const midY = (sy + ty) / 2;
   return `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
 }

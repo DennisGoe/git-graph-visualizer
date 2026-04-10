@@ -80,7 +80,8 @@ export default function ImportModal({ isOpen, onClose }: Props) {
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className="bg-bg-secondary border border-border rounded-xl w-full max-w-2xl mx-4 overflow-hidden shadow-2xl"
+            className="border rounded-xl w-full max-w-2xl mx-4 overflow-hidden shadow-2xl"
+            style={{ backgroundColor: '#232323', borderColor: '#3d3d3d' }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -107,14 +108,17 @@ export default function ImportModal({ isOpen, onClose }: Props) {
               {/* Step 1 */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent-blue/20 text-accent-blue text-xs font-bold">
+                  <span
+                    className="flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold"
+                    style={{ backgroundColor: '#ff6d5a25', color: '#ff6d5a' }}
+                  >
                     1
                   </span>
                   <span className="text-sm text-text-primary">
                     Run this command in your repository
                   </span>
                 </div>
-                <div className="flex items-center gap-2 bg-bg-primary rounded-lg border border-border px-3 py-2.5">
+                <div className="flex items-center gap-2 rounded-lg border px-3 py-2.5" style={{ backgroundColor: '#1b1b1b', borderColor: '#3d3d3d' }}>
                   <code
                     data-command
                     className="flex-1 text-sm text-accent-cyan font-mono select-all"
@@ -133,7 +137,10 @@ export default function ImportModal({ isOpen, onClose }: Props) {
               {/* Step 2 */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent-blue/20 text-accent-blue text-xs font-bold">
+                  <span
+                    className="flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold"
+                    style={{ backgroundColor: '#ff6d5a25', color: '#ff6d5a' }}
+                  >
                     2
                   </span>
                   <span className="text-sm text-text-primary">
@@ -150,7 +157,13 @@ export default function ImportModal({ isOpen, onClose }: Props) {
                   onDrop={handleDrop}
                   onDragOver={(e) => e.preventDefault()}
                   placeholder="Paste git log output here..."
-                  className="w-full h-48 bg-bg-primary border border-border rounded-lg px-3 py-2.5 text-sm font-mono text-text-primary placeholder:text-text-secondary/40 resize-none focus:outline-none focus:border-accent-blue/50 transition-colors"
+                  className="w-full h-48 rounded-lg px-3 py-2.5 text-sm font-mono text-text-primary placeholder:text-text-secondary/40 resize-none focus:outline-none transition-colors"
+                  style={{
+                    backgroundColor: '#1b1b1b',
+                    border: '1px solid #3d3d3d',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#ff6d5a80')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#3d3d3d')}
                   spellCheck={false}
                 />
               </div>
@@ -177,7 +190,7 @@ export default function ImportModal({ isOpen, onClose }: Props) {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-bg-tertiary/30">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border" style={{ backgroundColor: '#2d2d2d20' }}>
               <button
                 onClick={onClose}
                 className="px-4 py-2 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
@@ -187,7 +200,14 @@ export default function ImportModal({ isOpen, onClose }: Props) {
               <button
                 onClick={handleImport}
                 disabled={!input.trim()}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-accent-blue text-white hover:bg-accent-blue/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                style={{ backgroundColor: '#ff6d5a' }}
+                onMouseEnter={(e) => {
+                  if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#e85d4a';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#ff6d5a';
+                }}
               >
                 Import & Visualize
               </button>

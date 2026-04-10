@@ -18,6 +18,8 @@ function createCommit(
     hash: shortHash(),
     message,
     timestamp: Date.now(),
+    author: 'you',
+    date: new Date().toISOString(),
     branch,
     parentIds,
   };

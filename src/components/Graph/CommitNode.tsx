@@ -1,36 +1,56 @@
 import { motion } from 'motion/react';
 import { useAppSelector, useAppDispatch } from '../../store';
 import { selectCommit, hoverCommit } from '../../store/uiSlice';
-import type { GitCommit, LayoutNode } from '../../types/git';
+import type { GitCommit, GitBranch, LayoutNode } from '../../types/git';
+
+const CARD_W = 160;
+const CARD_H = 56;
 
 interface Props {
   commit: GitCommit;
   node: LayoutNode;
   color: string;
   isHead: boolean;
+  refBranches?: string[];
+  refTags?: string[];
+  branches: Record<string, GitBranch>;
 }
 
-export default function CommitNode({ commit, node, color, isHead }: Props) {
+export default function CommitNode({
+  commit,
+  node,
+  color,
+  isHead,
+  refBranches,
+  refTags,
+  branches,
+}: Props) {
   const dispatch = useAppDispatch();
   const selectedId = useAppSelector((s) => s.ui.selectedCommitId);
   const hoveredId = useAppSelector((s) => s.ui.hoveredCommitId);
   const isSelected = selectedId === commit.id;
   const isHovered = hoveredId === commit.id;
 
-  const tags = useAppSelector((s) =>
-    Object.values(s.git.tags).filter((t) => t.commitId === commit.id),
-  );
-  const branchHeads = useAppSelector((s) =>
-    Object.values(s.git.branches).filter(
-      (b) => b.headCommitId === commit.id,
-    ),
-  );
+  const isMerge = commit.parentIds.length > 1;
+
+  const cardX = node.x - CARD_W / 2;
+  const cardY = node.y - CARD_H / 2;
+
+  const borderColor = isSelected
+    ? '#ff6d5a'
+    : isHovered
+      ? '#555555'
+      : isHead
+        ? '#555555'
+        : '#3d3d3d';
+
+  const hasLabels = (refBranches && refBranches.length > 0) || (refTags && refTags.length > 0);
 
   return (
     <motion.g
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       style={{ cursor: 'pointer' }}
       onClick={() =>
         dispatch(selectCommit(isSelected ? null : commit.id))
@@ -38,114 +58,185 @@ export default function CommitNode({ commit, node, color, isHead }: Props) {
       onMouseEnter={() => dispatch(hoverCommit(commit.id))}
       onMouseLeave={() => dispatch(hoverCommit(null))}
     >
-      {/* Glow effect on hover/select */}
-      {(isHovered || isSelected) && (
-        <circle
-          cx={node.x}
-          cy={node.y}
-          r={18}
-          fill={color}
-          opacity={0.15}
+      {/* Labels (branch/tag pills) above the card */}
+      {hasLabels && (
+        <foreignObject
+          x={cardX}
+          y={cardY - 24}
+          width={CARD_W}
+          height={22}
+          overflow="visible"
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: '4px',
+              justifyContent: 'center',
+              alignItems: 'center',
+              height: '100%',
+            }}
+          >
+            {refBranches?.map((name) => (
+              <span
+                key={name}
+                style={{
+                  fontSize: '9px',
+                  fontWeight: 600,
+                  fontFamily: "'Inter', system-ui, sans-serif",
+                  padding: '2px 6px',
+                  borderRadius: '8px',
+                  color: branches[name]?.color || color,
+                  backgroundColor: (branches[name]?.color || color) + '25',
+                  whiteSpace: 'nowrap',
+                  lineHeight: '14px',
+                }}
+              >
+                {name}
+              </span>
+            ))}
+            {refTags?.map((name) => (
+              <span
+                key={name}
+                style={{
+                  fontSize: '9px',
+                  fontWeight: 600,
+                  fontFamily: "'Inter', system-ui, sans-serif",
+                  padding: '2px 6px',
+                  borderRadius: '8px',
+                  color: '#ff6d5a',
+                  backgroundColor: '#ff6d5a25',
+                  whiteSpace: 'nowrap',
+                  lineHeight: '14px',
+                }}
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        </foreignObject>
+      )}
+
+      {/* Glow ring when selected */}
+      {isSelected && (
+        <rect
+          x={cardX - 3}
+          y={cardY - 3}
+          width={CARD_W + 6}
+          height={CARD_H + 6}
+          rx={11}
+          ry={11}
+          fill="none"
+          stroke="#ff6d5a"
+          strokeWidth={1}
+          opacity={0.35}
         />
       )}
 
-      {/* HEAD indicator */}
-      {isHead && (
-        <circle
-          cx={node.x}
-          cy={node.y}
-          r={16}
+      {/* HEAD glow ring */}
+      {isHead && !isSelected && (
+        <rect
+          x={cardX - 2}
+          y={cardY - 2}
+          width={CARD_W + 4}
+          height={CARD_H + 4}
+          rx={10}
+          ry={10}
           fill="none"
           stroke={color}
-          strokeWidth={2}
-          strokeDasharray="4 2"
-          opacity={0.6}
+          strokeWidth={1}
+          strokeDasharray="4 3"
+          opacity={0.5}
         />
       )}
 
-      {/* Main commit circle */}
+      {/* Card body via foreignObject */}
+      <foreignObject x={cardX} y={cardY} width={CARD_W} height={CARD_H}>
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            background: '#2d2d2d',
+            border: `1px solid ${borderColor}`,
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '0 12px',
+            boxShadow: isHovered || isSelected
+              ? '0 4px 12px rgba(0,0,0,0.4)'
+              : '0 2px 6px rgba(0,0,0,0.2)',
+            transition: 'border-color 0.15s, box-shadow 0.15s',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Branch color dot */}
+          <div
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: isMerge ? color : 'transparent',
+              border: isMerge ? 'none' : `2px solid ${color}`,
+              flexShrink: 0,
+            }}
+          />
+
+          {/* Text content */}
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '10px',
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                color: '#8b8b8b',
+                lineHeight: '14px',
+              }}
+            >
+              {commit.hash}
+            </span>
+            <span
+              style={{
+                fontSize: '11px',
+                fontFamily: "'Inter', system-ui, sans-serif",
+                color: '#ffffff',
+                lineHeight: '16px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {commit.message}
+            </span>
+          </div>
+        </div>
+      </foreignObject>
+
+      {/* Connector dot: top-center */}
       <circle
         cx={node.x}
-        cy={node.y}
-        r={10}
-        fill={commit.parentIds.length > 1 ? color : '#0d1117'}
-        stroke={color}
-        strokeWidth={3}
+        cy={cardY}
+        r={4}
+        fill="#2d2d2d"
+        stroke={borderColor}
+        strokeWidth={1.5}
       />
 
-      {/* Hash label */}
-      <text
-        x={node.x + 20}
-        y={node.y - 8}
-        fill="#8b949e"
-        fontSize={11}
-        fontFamily="monospace"
-      >
-        {commit.hash}
-      </text>
-
-      {/* Commit message */}
-      <text
-        x={node.x + 20}
-        y={node.y + 8}
-        fill="#e6edf3"
-        fontSize={12}
-        fontFamily="monospace"
-        fontWeight={isHead ? 600 : 400}
-      >
-        {commit.message.length > 40
-          ? commit.message.slice(0, 40) + '...'
-          : commit.message}
-      </text>
-
-      {/* Branch labels */}
-      {branchHeads.map((branch, i) => (
-        <g key={branch.name}>
-          <rect
-            x={node.x + 20 + i * 90}
-            y={node.y + 14}
-            width={branch.name.length * 8 + 12}
-            height={18}
-            rx={4}
-            fill={branch.color}
-            opacity={0.2}
-          />
-          <text
-            x={node.x + 26 + i * 90}
-            y={node.y + 27}
-            fill={branch.color}
-            fontSize={10}
-            fontFamily="monospace"
-            fontWeight={600}
-          >
-            {branch.name}
-          </text>
-        </g>
-      ))}
-
-      {/* Tag labels */}
-      {tags.map((t, i) => (
-        <g key={t.name}>
-          <rect
-            x={node.x + 20 + branchHeads.length * 90 + i * 80}
-            y={node.y + 14}
-            width={t.name.length * 8 + 16}
-            height={18}
-            rx={4}
-            fill="#d29922"
-            opacity={0.2}
-          />
-          <text
-            x={node.x + 28 + branchHeads.length * 90 + i * 80}
-            y={node.y + 27}
-            fill="#d29922"
-            fontSize={10}
-            fontFamily="monospace"
-          >
-            {'#' + t.name}
-          </text>
-        </g>
-      ))}
+      {/* Connector dot: bottom-center */}
+      <circle
+        cx={node.x}
+        cy={cardY + CARD_H}
+        r={4}
+        fill="#2d2d2d"
+        stroke={borderColor}
+        strokeWidth={1.5}
+      />
     </motion.g>
   );
 }

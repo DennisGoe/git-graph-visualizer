@@ -3,11 +3,13 @@ import type { GitCommit, GitBranch, GitTag } from '../types/git';
 import { BRANCH_COLORS } from '../types/git';
 
 /**
- * Expected input format from:
- * git log --all --format="%H|%P|%D|%s" --topo-order
+ * Expected input format (v2 — with author + date):
+ *   git log --all --format="%H|%P|%D|%an|%aI|%s" --topo-order
  *
- * Each line: full_hash|parent_hashes (space sep)|ref_names|subject
- * Example:   abc123|def456 ghi789|HEAD -> main, origin/main|Fix bug
+ * Each line: hash|parents|refs|author|iso-date|subject
+ *
+ * Also accepts the old v1 format (4 fields) for backwards compat:
+ *   git log --all --format="%H|%P|%D|%s" --topo-order
  */
 
 interface ParsedRepo {
@@ -17,6 +19,56 @@ interface ParsedRepo {
   head: string;
   currentBranch: string;
   commitOrder: string[];
+}
+
+interface RawEntry {
+  hash: string;
+  parentHashes: string[];
+  refs: string;
+  author: string;
+  date: string;
+  message: string;
+  id: string;
+}
+
+function splitLine(line: string): RawEntry | null {
+  // Count pipes to detect v1 (3 pipes → 4 fields) vs v2 (5 pipes → 6 fields)
+  const pipes: number[] = [];
+  for (let i = 0; i < line.length && pipes.length < 6; i++) {
+    if (line[i] === '|') pipes.push(i);
+  }
+
+  if (pipes.length >= 5) {
+    // v2: hash|parents|refs|author|date|message
+    return {
+      hash: line.slice(0, pipes[0]).trim(),
+      parentHashes: line.slice(pipes[0] + 1, pipes[1]).trim()
+        ? line.slice(pipes[0] + 1, pipes[1]).trim().split(/\s+/)
+        : [],
+      refs: line.slice(pipes[1] + 1, pipes[2]).trim(),
+      author: line.slice(pipes[2] + 1, pipes[3]).trim(),
+      date: line.slice(pipes[3] + 1, pipes[4]).trim(),
+      message: line.slice(pipes[4] + 1).trim(),
+      id: nanoid(),
+    };
+  }
+
+  if (pipes.length >= 3) {
+    // v1: hash|parents|refs|message
+    return {
+      hash: line.slice(0, pipes[0]).trim(),
+      parentHashes: line.slice(pipes[0] + 1, pipes[1]).trim()
+        ? line.slice(pipes[0] + 1, pipes[1]).trim().split(/\s+/)
+        : [],
+      refs: line.slice(pipes[1] + 1, pipes[2]).trim(),
+      author: '',
+      date: '',
+      message: line.slice(pipes[2] + 1).trim(),
+      id: nanoid(),
+    };
+  }
+
+  return null;
 }
 
 export function parseGitLog(raw: string): ParsedRepo | { error: string } {
@@ -30,12 +82,11 @@ export function parseGitLog(raw: string): ParsedRepo | { error: string } {
     return { error: 'No input provided. Paste the output of the git log command.' };
   }
 
-  // Validate format: expect at least one pipe character per line
-  const firstLine = lines[0];
-  if (!firstLine.includes('|')) {
+  if (!lines[0].includes('|')) {
     return {
       error:
-        'Invalid format. Please run this exact command in your repo:\n\ngit log --all --format="%H|%P|%D|%s" --topo-order',
+        'Invalid format. Please run this exact command in your repo:\n\n' +
+        GIT_LOG_COMMAND,
     };
   }
 
@@ -47,52 +98,28 @@ export function parseGitLog(raw: string): ParsedRepo | { error: string } {
   let head = '';
   let currentBranch = 'main';
 
-  // Map to track which branch a commit belongs to
   const commitBranchMap: Record<string, string> = {};
 
-  // First pass: parse all commits and collect refs
-  const parsed: Array<{
-    hash: string;
-    parentHashes: string[];
-    refs: string;
-    message: string;
-    id: string;
-  }> = [];
+  // --- First pass: parse every line -----------------------------------------
+  const parsed: RawEntry[] = [];
 
   for (const line of lines) {
-    // Split on pipe, but only first 3 pipes (message may contain pipes)
-    const pipeIdx1 = line.indexOf('|');
-    const pipeIdx2 = line.indexOf('|', pipeIdx1 + 1);
-    const pipeIdx3 = line.indexOf('|', pipeIdx2 + 1);
+    const entry = splitLine(line);
+    if (!entry) continue;
 
-    if (pipeIdx1 === -1 || pipeIdx2 === -1 || pipeIdx3 === -1) {
-      continue; // Skip malformed lines
+    hashToId[entry.hash] = entry.id;
+    if (entry.hash.length >= 7) {
+      hashToId[entry.hash.slice(0, 7)] = entry.id;
     }
-
-    const hash = line.slice(0, pipeIdx1).trim();
-    const parentStr = line.slice(pipeIdx1 + 1, pipeIdx2).trim();
-    const refs = line.slice(pipeIdx2 + 1, pipeIdx3).trim();
-    const message = line.slice(pipeIdx3 + 1).trim();
-
-    const parentHashes = parentStr ? parentStr.split(/\s+/) : [];
-    const id = nanoid();
-
-    hashToId[hash] = id;
-    // Also map short hashes (first 7 chars)
-    if (hash.length >= 7) {
-      hashToId[hash.slice(0, 7)] = id;
-    }
-
-    parsed.push({ hash, parentHashes, refs, message, id });
+    parsed.push(entry);
   }
 
   if (parsed.length === 0) {
     return { error: 'Could not parse any commits from the input.' };
   }
 
-  // Second pass: resolve refs to determine branch assignments
-  // Parse refs to find branch names and HEAD
-  const refBranchHeads: Record<string, string> = {}; // branchName -> hash
+  // --- Second pass: resolve refs → branches, tags, HEAD --------------------
+  const refBranchHeads: Record<string, string> = {};
 
   for (const entry of parsed) {
     if (!entry.refs) continue;
@@ -100,76 +127,55 @@ export function parseGitLog(raw: string): ParsedRepo | { error: string } {
     const refParts = entry.refs.split(',').map((r) => r.trim());
 
     for (const ref of refParts) {
-      // HEAD -> branch_name
       const headMatch = ref.match(/^HEAD\s*->\s*(.+)$/);
       if (headMatch) {
-        const branchName = headMatch[1].replace(/^origin\//, '');
-        currentBranch = branchName;
+        const name = headMatch[1].replace(/^origin\//, '');
+        currentBranch = name;
         head = entry.id;
-        refBranchHeads[branchName] = entry.hash;
+        refBranchHeads[name] = entry.hash;
         continue;
       }
 
-      // tag: tag_name
       const tagMatch = ref.match(/^tag:\s*(.+)$/);
       if (tagMatch) {
-        tags[tagMatch[1]] = {
-          name: tagMatch[1],
-          commitId: entry.id,
-        };
+        tags[tagMatch[1]] = { name: tagMatch[1], commitId: entry.id };
         continue;
       }
 
-      // Skip origin/ refs if we already have the local one
       if (ref.startsWith('origin/')) {
-        const localName = ref.replace(/^origin\//, '');
-        if (!refBranchHeads[localName]) {
-          refBranchHeads[localName] = entry.hash;
+        const local = ref.slice(7);
+        if (!refBranchHeads[local]) {
+          refBranchHeads[local] = entry.hash;
         }
         continue;
       }
 
-      // Plain branch name
       if (ref !== 'HEAD') {
         refBranchHeads[ref] = entry.hash;
       }
     }
   }
 
-  // If no HEAD found, use first commit
   if (!head && parsed.length > 0) {
     head = parsed[0].id;
   }
 
-  // Assign branches: walk from each branch head backward
-  // First, ensure main/master exists
   if (!refBranchHeads['main'] && !refBranchHeads['master']) {
-    // Use the branch of the last commit (root) as main
-    const rootEntry = parsed[parsed.length - 1];
-    refBranchHeads['main'] = rootEntry.hash;
+    refBranchHeads['main'] = parsed[parsed.length - 1].hash;
   }
 
-  // Build parent lookup for traversal
-  const hashParents: Record<string, string[]> = {};
-  for (const entry of parsed) {
-    hashParents[entry.hash] = entry.parentHashes;
-  }
-
-  // Assign colors to branches
-  let colorIdx = 0;
+  // --- Assign branch columns in priority order (main/master first) ----------
   const branchNames = Object.keys(refBranchHeads);
-  // Ensure main/master is first
   branchNames.sort((a, b) => {
     if (a === 'main' || a === 'master') return -1;
     if (b === 'main' || b === 'master') return 1;
     return 0;
   });
 
+  let colorIdx = 0;
   for (const name of branchNames) {
-    const hash = refBranchHeads[name];
-    const commitId = hashToId[hash];
+    const commitId = hashToId[refBranchHeads[name]];
     if (!commitId) continue;
-
     branches[name] = {
       name,
       color: BRANCH_COLORS[colorIdx % BRANCH_COLORS.length],
@@ -178,33 +184,25 @@ export function parseGitLog(raw: string): ParsedRepo | { error: string } {
     colorIdx++;
   }
 
-  // Walk from each branch head backward and assign commits to branches
-  // Priority: first branch to claim a commit wins
+  // --- Walk from each branch head backwards (first-parent only) -------------
+  const hashParents: Record<string, string[]> = {};
+  for (const e of parsed) {
+    hashParents[e.hash] = e.parentHashes;
+  }
+
   for (const branchName of branchNames) {
-    const startHash = refBranchHeads[branchName];
-    const queue = [startHash];
+    let hash: string | undefined = refBranchHeads[branchName];
     const visited = new Set<string>();
-
-    while (queue.length > 0) {
-      const hash = queue.shift()!;
-      if (visited.has(hash)) continue;
+    while (hash && !visited.has(hash)) {
       visited.add(hash);
-
       if (!commitBranchMap[hash]) {
         commitBranchMap[hash] = branchName;
       }
-
-      const parents = hashParents[hash] || [];
-      // Only follow the first parent for branch assignment
-      // (second parent is the merge source — belongs to another branch)
-      if (parents[0]) {
-        queue.push(parents[0]);
-      }
+      hash = hashParents[hash]?.[0]; // first-parent only
     }
   }
 
-  // Third pass: build commit objects (topo-order is reversed for our display)
-  // git log --topo-order gives newest first, we want oldest first for commitOrder
+  // --- Third pass: build GitCommit objects (oldest first) -------------------
   const reversedParsed = [...parsed].reverse();
 
   for (const entry of reversedParsed) {
@@ -214,11 +212,15 @@ export function parseGitLog(raw: string): ParsedRepo | { error: string } {
 
     const branch = commitBranchMap[entry.hash] || currentBranch;
 
+    const ts = entry.date ? new Date(entry.date).getTime() : Date.now();
+
     const commit: GitCommit = {
       id: entry.id,
       hash: entry.hash.slice(0, 7),
       message: entry.message,
-      timestamp: Date.now(),
+      timestamp: ts,
+      author: entry.author || 'unknown',
+      date: entry.date || '',
       branch,
       parentIds,
     };
@@ -227,15 +229,8 @@ export function parseGitLog(raw: string): ParsedRepo | { error: string } {
     commitOrder.push(entry.id);
   }
 
-  return {
-    commits,
-    branches,
-    tags,
-    head,
-    currentBranch,
-    commitOrder,
-  };
+  return { commits, branches, tags, head, currentBranch, commitOrder };
 }
 
 export const GIT_LOG_COMMAND =
-  'git log --all --format="%H|%P|%D|%s" --topo-order';
+  'git log --all --format="%H|%P|%D|%an|%aI|%s" --topo-order';

@@ -3,6 +3,8 @@ export interface GitCommit {
   hash: string;
   message: string;
   timestamp: number;
+  author: string;
+  date: string;
   branch: string;
   parentIds: string[];
   x?: number;
@@ -18,13 +20,6 @@ export interface GitBranch {
 export interface GitTag {
   name: string;
   commitId: string;
-}
-
-export interface GitMerge {
-  sourceCommitId: string;
-  targetCommitId: string;
-  sourceBranch: string;
-  targetBranch: string;
 }
 
 export interface GitState {
@@ -55,6 +50,7 @@ export interface LayoutEdge {
   source: string;
   target: string;
   type: 'normal' | 'merge';
+  sourceBranch: string;
 }
 
 export type BranchColorMap = Record<string, string>;
