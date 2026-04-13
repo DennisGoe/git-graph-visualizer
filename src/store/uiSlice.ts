@@ -3,6 +3,7 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 interface UiState {
   selectedCommitId: string | null;
   hoveredCommitId: string | null;
+  selectedBranchName: string | null;
   sidebarOpen: boolean;
   animationsEnabled: boolean;
 }
@@ -10,6 +11,7 @@ interface UiState {
 const initialState: UiState = {
   selectedCommitId: null,
   hoveredCommitId: null,
+  selectedBranchName: null,
   sidebarOpen: true,
   animationsEnabled: true,
 };
@@ -30,9 +32,13 @@ const uiSlice = createSlice({
     toggleAnimations(state) {
       state.animationsEnabled = !state.animationsEnabled;
     },
+    selectBranch(state, action: PayloadAction<string | null>) {
+      state.selectedBranchName =
+        state.selectedBranchName === action.payload ? null : action.payload;
+    },
   },
 });
 
-export const { selectCommit, hoverCommit, toggleSidebar, toggleAnimations } =
+export const { selectCommit, hoverCommit, toggleSidebar, toggleAnimations, selectBranch } =
   uiSlice.actions;
 export default uiSlice.reducer;

@@ -8,12 +8,19 @@ const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.1;
 
+// Viewport culling: approximate node bounding box + generous buffer
+const NODE_HALF_W = 100;
+const NODE_TOP = 60;
+const NODE_BOTTOM = 32;
+const CULL_BUFFER = 200;
+
 export default function GraphCanvas() {
   const commits = useAppSelector((s) => s.git.commits);
   const commitOrder = useAppSelector((s) => s.git.commitOrder);
   const branches = useAppSelector((s) => s.git.branches);
   const tags = useAppSelector((s) => s.git.tags);
   const head = useAppSelector((s) => s.git.head);
+  const selectedBranch = useAppSelector((s) => s.ui.selectedBranchName);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Pan & zoom state
@@ -22,6 +29,21 @@ export default function GraphCanvas() {
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const panStart = useRef({ x: 0, y: 0 });
+
+  // Container size for viewport culling
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const layout = useMemo(
     () => computeGraphLayout(commits, commitOrder, branches),
@@ -49,6 +71,51 @@ export default function GraphCanvas() {
     }
     return map;
   }, [commitOrder, branches, tags]);
+
+  // --- Viewport culling ---
+  const visibleNodes = useMemo(() => {
+    if (!containerSize.width || !containerSize.height) return layout.nodes;
+    const left = -pan.x / zoom - CULL_BUFFER;
+    const top = -pan.y / zoom - CULL_BUFFER;
+    const right = (containerSize.width - pan.x) / zoom + CULL_BUFFER;
+    const bottom = (containerSize.height - pan.y) / zoom + CULL_BUFFER;
+    return layout.nodes.filter(
+      (n) =>
+        n.x + NODE_HALF_W >= left &&
+        n.x - NODE_HALF_W <= right &&
+        n.y + NODE_BOTTOM >= top &&
+        n.y - NODE_TOP <= bottom,
+    );
+  }, [layout.nodes, pan.x, pan.y, zoom, containerSize.width, containerSize.height]);
+
+  const visibleNodeIds = useMemo(
+    () => new Set(visibleNodes.map((n) => n.id)),
+    [visibleNodes],
+  );
+
+  const visibleEdges = useMemo(
+    () =>
+      layout.edges.filter(
+        (e) => visibleNodeIds.has(e.source) || visibleNodeIds.has(e.target),
+      ),
+    [layout.edges, visibleNodeIds],
+  );
+
+  // --- Animation tracking: skip entry animation for already-seen items ---
+  const seenNodeIds = useRef(new Set<string>());
+  const seenEdgeKeys = useRef(new Set<string>());
+
+  // Clear on layout change (new repo imported)
+  useEffect(() => {
+    seenNodeIds.current.clear();
+    seenEdgeKeys.current.clear();
+  }, [layout]);
+
+  // Mark currently visible items as seen after paint
+  useEffect(() => {
+    for (const n of visibleNodes) seenNodeIds.current.add(n.id);
+    for (const e of visibleEdges) seenEdgeKeys.current.add(`${e.source}-${e.target}`);
+  });
 
   const svgWidth = Math.max(layout.width, 1200);
   const svgHeight = Math.max(layout.height, 600);
@@ -195,10 +262,83 @@ export default function GraphCanvas() {
           transformOrigin: '0 0',
         }}
       >
+        {/* Merge arrow marker */}
+        <defs>
+          <marker
+            id="merge-arrow"
+            viewBox="0 0 10 8"
+            refX={9}
+            refY={4}
+            markerWidth={8}
+            markerHeight={6}
+            orient="auto"
+          >
+            <path d="M 0 0 L 10 4 L 0 8 z" fill="context-stroke" opacity={0.7} />
+          </marker>
+        </defs>
 
-        {/* Edges */}
+        {/* Branch lane lines — behind everything */}
         <g>
-          {layout.edges.map((edge) => {
+          {layout.lanes.map((lane) => (
+            <line
+              key={`lane-${lane.column}`}
+              x1={lane.x}
+              y1={lane.minY - 40}
+              x2={lane.x}
+              y2={lane.maxY + 40}
+              stroke={lane.color}
+              strokeWidth={1.5}
+              opacity={0.12}
+            />
+          ))}
+        </g>
+
+        {/* Lane header labels */}
+        <g>
+          {layout.lanes.map((lane) => (
+            <foreignObject
+              key={`lane-label-${lane.column}`}
+              x={lane.x - 70}
+              y={lane.minY - 72}
+              width={140}
+              height={22}
+              overflow="visible"
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  height: '100%',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    fontFamily: "'Inter', system-ui, sans-serif",
+                    padding: '2px 8px',
+                    borderRadius: '8px',
+                    color: lane.color,
+                    backgroundColor: lane.color + '20',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '130px',
+                    lineHeight: '16px',
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  {lane.branchName}
+                </span>
+              </div>
+            </foreignObject>
+          ))}
+        </g>
+
+        {/* Edges — only visible */}
+        <g>
+          {visibleEdges.map((edge) => {
             const sourceNode = nodeMap.get(edge.source);
             const targetNode = nodeMap.get(edge.target);
             if (!sourceNode || !targetNode) return null;
@@ -208,6 +348,11 @@ export default function GraphCanvas() {
                 ? branches[edge.sourceBranch]?.color || '#8b8b8b'
                 : branches[commits[edge.target]?.branch]?.color || '#8b8b8b';
 
+            const edgeDimmed =
+              selectedBranch !== null &&
+              commits[edge.source]?.branch !== selectedBranch &&
+              commits[edge.target]?.branch !== selectedBranch;
+
             return (
               <EdgeLine
                 key={`${edge.source}-${edge.target}`}
@@ -215,14 +360,16 @@ export default function GraphCanvas() {
                 sourceNode={sourceNode}
                 targetNode={targetNode}
                 color={branchColor}
+                shouldAnimate={!seenEdgeKeys.current.has(`${edge.source}-${edge.target}`)}
+                dimmed={edgeDimmed}
               />
             );
           })}
         </g>
 
-        {/* Nodes */}
+        {/* Nodes — only visible */}
         <g>
-          {layout.nodes.map((node) => {
+          {visibleNodes.map((node) => {
             const commit = commits[node.id];
             if (!commit) return null;
             const branchColor =
@@ -239,6 +386,7 @@ export default function GraphCanvas() {
                 refBranches={refs?.branches}
                 refTags={refs?.tags}
                 branches={branches}
+                shouldAnimate={!seenNodeIds.current.has(node.id)}
               />
             );
           })}

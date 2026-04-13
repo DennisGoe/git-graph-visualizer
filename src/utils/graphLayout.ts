@@ -1,12 +1,14 @@
-import type { GitCommit, GitBranch, LayoutNode, LayoutEdge } from '../types/git';
+import type { GitCommit, GitBranch, LayoutNode, LayoutEdge, LaneInfo } from '../types/git';
 
 const COLUMN_WIDTH = 200;
 const ROW_HEIGHT = 90;
 const GRAPH_LEFT_PAD = 80;
+export const CARD_H = 56;
 
 export interface LayoutResult {
   nodes: LayoutNode[];
   edges: LayoutEdge[];
+  lanes: LaneInfo[];
   width: number;
   height: number;
   columnCount: number;
@@ -115,11 +117,33 @@ export function computeGraphLayout(
     }
   }
 
+  // Compute lane data per branch column
+  const colMinY: Record<number, number> = {};
+  const colMaxY: Record<number, number> = {};
+  for (const n of nodes) {
+    const col = n.column;
+    if (colMinY[col] === undefined || n.y < colMinY[col]) colMinY[col] = n.y;
+    if (colMaxY[col] === undefined || n.y > colMaxY[col]) colMaxY[col] = n.y;
+  }
+
+  const lanes: LaneInfo[] = [];
+  for (const [name, col] of Object.entries(branchColumn)) {
+    if (colMinY[col] === undefined) continue;
+    lanes.push({
+      branchName: name,
+      column: col,
+      color: branches[name]?.color || '#8b8b8b',
+      x: GRAPH_LEFT_PAD + col * COLUMN_WIDTH + COLUMN_WIDTH / 2,
+      minY: colMinY[col],
+      maxY: colMaxY[col],
+    });
+  }
+
   const maxCol = Math.max(0, ...nodes.map((n) => n.column));
   const graphWidth = GRAPH_LEFT_PAD + (maxCol + 1) * COLUMN_WIDTH + 80;
   const height = 90 + ordered.length * ROW_HEIGHT;
 
-  return { nodes, edges, width: graphWidth, height, columnCount: maxCol + 1 };
+  return { nodes, edges, lanes, width: graphWidth, height, columnCount: maxCol + 1 };
 }
 
 export function buildEdgePath(
@@ -127,9 +151,9 @@ export function buildEdgePath(
   target: LayoutNode,
 ): string {
   const sx = source.x;
-  const sy = source.y;
+  const sy = source.y - CARD_H / 2; // top edge of parent card
   const tx = target.x;
-  const ty = target.y;
+  const ty = target.y + CARD_H / 2; // bottom edge of child card
 
   if (sx === tx) {
     return `M ${sx} ${sy} L ${tx} ${ty}`;

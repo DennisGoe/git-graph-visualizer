@@ -53,6 +53,15 @@ export interface LayoutEdge {
   sourceBranch: string;
 }
 
+export interface LaneInfo {
+  branchName: string;
+  column: number;
+  color: string;
+  x: number;
+  minY: number;
+  maxY: number;
+}
+
 export type BranchColorMap = Record<string, string>;
 
 export const BRANCH_COLORS = [

@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { motion } from 'motion/react';
 import { useAppSelector, useAppDispatch } from '../../store';
 import { selectCommit, hoverCommit } from '../../store/uiSlice';
+import { CARD_H } from '../../utils/graphLayout';
 import type { GitCommit, GitBranch, LayoutNode } from '../../types/git';
 
 const CARD_W = 160;
-const CARD_H = 56;
 
 interface Props {
   commit: GitCommit;
@@ -14,9 +15,10 @@ interface Props {
   refBranches?: string[];
   refTags?: string[];
   branches: Record<string, GitBranch>;
+  shouldAnimate: boolean;
 }
 
-export default function CommitNode({
+const CommitNode = memo(function CommitNode({
   commit,
   node,
   color,
@@ -24,12 +26,15 @@ export default function CommitNode({
   refBranches,
   refTags,
   branches,
+  shouldAnimate,
 }: Props) {
   const dispatch = useAppDispatch();
-  const selectedId = useAppSelector((s) => s.ui.selectedCommitId);
-  const hoveredId = useAppSelector((s) => s.ui.hoveredCommitId);
-  const isSelected = selectedId === commit.id;
-  const isHovered = hoveredId === commit.id;
+  // Return booleans so only the affected node re-renders on hover/select
+  const isSelected = useAppSelector((s) => s.ui.selectedCommitId === commit.id);
+  const isHovered = useAppSelector((s) => s.ui.hoveredCommitId === commit.id);
+  const dimmed = useAppSelector(
+    (s) => s.ui.selectedBranchName !== null && commit.branch !== s.ui.selectedBranchName,
+  );
 
   const isMerge = commit.parentIds.length > 1;
 
@@ -48,8 +53,8 @@ export default function CommitNode({
 
   return (
     <motion.g
-      initial={{ scale: 0, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
+      initial={shouldAnimate ? { scale: 0, opacity: 0 } : false}
+      animate={{ scale: 1, opacity: dimmed ? 0.15 : 1 }}
       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       style={{ cursor: 'pointer' }}
       onClick={() =>
@@ -239,4 +244,6 @@ export default function CommitNode({
       />
     </motion.g>
   );
-}
+});
+
+export default CommitNode;
