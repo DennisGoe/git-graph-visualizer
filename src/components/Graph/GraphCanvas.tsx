@@ -56,21 +56,19 @@ export default function GraphCanvas() {
     return map;
   }, [layout.nodes]);
 
+  // Only track tags per commit — branch names are shown via lane headers
   const commitRefs = useMemo(() => {
-    const map: Record<string, { branches: string[]; tags: string[] }> = {};
+    const map: Record<string, { tags: string[] }> = {};
     for (const id of commitOrder) {
-      const branchLabels = Object.values(branches)
-        .filter((b) => b.headCommitId === id)
-        .map((b) => b.name);
       const tagLabels = Object.values(tags)
         .filter((t) => t.commitId === id)
         .map((t) => t.name);
-      if (branchLabels.length || tagLabels.length) {
-        map[id] = { branches: branchLabels, tags: tagLabels };
+      if (tagLabels.length) {
+        map[id] = { tags: tagLabels };
       }
     }
     return map;
-  }, [commitOrder, branches, tags]);
+  }, [commitOrder, tags]);
 
   // --- Viewport culling ---
   const visibleNodes = useMemo(() => {
@@ -119,6 +117,29 @@ export default function GraphCanvas() {
 
   const svgWidth = Math.max(layout.width, 1200);
   const svgHeight = Math.max(layout.height, 600);
+
+  // --- Smooth pan to branch HEAD on selection ---
+  const [smoothPan, setSmoothPan] = useState(false);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  useEffect(() => {
+    if (!selectedBranch) return;
+    const branch = branches[selectedBranch];
+    if (!branch) return;
+    const headNode = nodeMap.get(branch.headCommitId);
+    if (!headNode || !containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const z = zoomRef.current;
+    setSmoothPan(true);
+    setPan({
+      x: rect.width / 2 - headNode.x * z,
+      y: rect.height / 2 - headNode.y * z,
+    });
+    const timer = setTimeout(() => setSmoothPan(false), 450);
+    return () => clearTimeout(timer);
+  }, [selectedBranch, branches, nodeMap]);
 
   // Center graph on mount and when layout changes
   const hasCentered = useRef(false);
@@ -260,6 +281,7 @@ export default function GraphCanvas() {
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
+          transition: smoothPan ? 'transform 0.4s ease-out' : undefined,
         }}
       >
         {/* Merge arrow marker */}
@@ -383,7 +405,6 @@ export default function GraphCanvas() {
                 node={node}
                 color={branchColor}
                 isHead={commit.id === head}
-                refBranches={refs?.branches}
                 refTags={refs?.tags}
                 branches={branches}
                 shouldAnimate={!seenNodeIds.current.has(node.id)}

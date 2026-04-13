@@ -33,7 +33,10 @@ const CommitNode = memo(function CommitNode({
   const isSelected = useAppSelector((s) => s.ui.selectedCommitId === commit.id);
   const isHovered = useAppSelector((s) => s.ui.hoveredCommitId === commit.id);
   const dimmed = useAppSelector(
-    (s) => s.ui.selectedBranchName !== null && commit.branch !== s.ui.selectedBranchName,
+    (s) =>
+      !isSelected &&
+      s.ui.selectedBranchName !== null &&
+      commit.branch !== s.ui.selectedBranchName,
   );
 
   const isMerge = commit.parentIds.length > 1;
