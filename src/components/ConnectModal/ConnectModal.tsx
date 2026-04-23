@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppDispatch } from '../../store';
 import { importRepo } from '../../store/gitSlice';
-import { clearTerminal, addLine } from '../../store/terminalSlice';
 import { fetchGitHubRepo } from '../../utils/githubApi';
 
 interface Props {
@@ -108,13 +107,6 @@ export default function ConnectModal({ isOpen, onClose }: Props) {
 
     // Import into Redux
     dispatch(importRepo(data));
-    dispatch(clearTerminal());
-    dispatch(
-      addLine({
-        type: 'output',
-        content: `Connected to ${parsed.owner}/${parsed.repo}: ${repoStats.commits} commits, ${repoStats.branches} branches, ${repoStats.tags} tags`,
-      }),
-    );
 
     // Auto-close after a short delay
     setTimeout(() => {

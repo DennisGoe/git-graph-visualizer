@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppDispatch } from '../../store';
 import { importRepo } from '../../store/gitSlice';
-import { clearTerminal, addLine } from '../../store/terminalSlice';
 import { parseGitLog, GIT_LOG_COMMAND } from '../../utils/gitLogParser';
 
 interface Props {
@@ -45,13 +44,6 @@ export default function ImportModal({ isOpen, onClose }: Props) {
     }
 
     dispatch(importRepo(result));
-    dispatch(clearTerminal());
-    dispatch(
-      addLine({
-        type: 'output',
-        content: `Imported repository: ${Object.keys(result.commits).length} commits, ${Object.keys(result.branches).length} branches, ${Object.keys(result.tags).length} tags`,
-      }),
-    );
 
     setInput('');
     onClose();

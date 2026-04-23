@@ -1,14 +1,16 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector } from 'react-redux';
 import gitReducer from './gitSlice';
-import terminalReducer from './terminalSlice';
 import uiReducer from './uiSlice';
+import projectReducer from './projectSlice';
+import pipelinesReducer from './pipelinesSlice';
 
 export const store = configureStore({
   reducer: {
     git: gitReducer,
-    terminal: terminalReducer,
     ui: uiReducer,
+    project: projectReducer,
+    pipelines: pipelinesReducer,
   },
 });
 

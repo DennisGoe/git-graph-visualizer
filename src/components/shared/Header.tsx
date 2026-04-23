@@ -5,9 +5,10 @@ interface Props {
   onImportClick: () => void;
   onConnectClick: () => void;
   onConnectGitLabClick: () => void;
+  onOfficeClick: () => void;
 }
 
-export default function Header({ onImportClick, onConnectClick, onConnectGitLabClick }: Props) {
+export default function Header({ onImportClick, onConnectClick, onConnectGitLabClick, onOfficeClick }: Props) {
   const dispatch = useAppDispatch();
   const currentBranch = useAppSelector((s) => s.git.currentBranch);
   const branchCount = useAppSelector(
@@ -15,6 +16,9 @@ export default function Header({ onImportClick, onConnectClick, onConnectGitLabC
   );
   const commitCount = useAppSelector((s) => s.git.commitOrder.length);
   const sidebarOpen = useAppSelector((s) => s.ui.sidebarOpen);
+  const gitlabConnected = useAppSelector(
+    (s) => s.project.provider === 'gitlab' && !!s.project.token,
+  );
 
   return (
     <header
@@ -64,6 +68,19 @@ export default function Header({ onImportClick, onConnectClick, onConnectGitLabC
 
       {/* Right: connect buttons + import + sidebar toggle */}
       <div className="flex items-center gap-2.5">
+        {/* Office (only if GitLab connected) */}
+        {gitlabConnected && (
+          <button
+            onClick={onOfficeClick}
+            className="header-btn-ghost flex items-center gap-2 rounded-xl text-[13px] font-semibold text-text-secondary"
+            style={{ padding: '6px 12px' }}
+            title="Open the Office — live pipeline view"
+          >
+            <span style={{ fontSize: 14 }}>🏢</span>
+            Office
+          </button>
+        )}
+
         {/* GitLab */}
         <button
           onClick={onConnectGitLabClick}

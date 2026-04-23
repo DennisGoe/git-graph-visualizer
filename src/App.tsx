@@ -5,11 +5,13 @@ import Sidebar from './components/Sidebar/Sidebar';
 import ImportModal from './components/ImportModal/ImportModal';
 import ConnectModal from './components/ConnectModal/ConnectModal';
 import ConnectGitLabModal from './components/ConnectGitLabModal/ConnectGitLabModal';
+import OfficeOverlay from './components/Office/OfficeOverlay';
 
 export default function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectGitLabOpen, setConnectGitLabOpen] = useState(false);
+  const [officeOpen, setOfficeOpen] = useState(false);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -17,6 +19,7 @@ export default function App() {
         onImportClick={() => setImportOpen(true)}
         onConnectClick={() => setConnectOpen(true)}
         onConnectGitLabClick={() => setConnectGitLabOpen(true)}
+        onOfficeClick={() => setOfficeOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -39,6 +42,11 @@ export default function App() {
       <ConnectGitLabModal
         isOpen={connectGitLabOpen}
         onClose={() => setConnectGitLabOpen(false)}
+      />
+
+      <OfficeOverlay
+        isOpen={officeOpen}
+        onClose={() => setOfficeOpen(false)}
       />
     </div>
   );

@@ -31,13 +31,6 @@ export interface GitState {
   commitOrder: string[];
 }
 
-export interface TerminalLine {
-  id: string;
-  type: 'input' | 'output' | 'error';
-  content: string;
-  timestamp: number;
-}
-
 export interface LayoutNode {
   id: string;
   x: number;

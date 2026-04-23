@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppDispatch } from '../../store';
 import { importRepo } from '../../store/gitSlice';
-import { clearTerminal, addLine } from '../../store/terminalSlice';
+import { setGitLabContext } from '../../store/projectSlice';
+import { clearPipelines } from '../../store/pipelinesSlice';
 import { fetchGitLabRepo } from '../../utils/gitlabApi';
 
 interface Props {
@@ -113,13 +114,14 @@ export default function ConnectGitLabModal({ isOpen, onClose }: Props) {
     setStatus('success');
 
     dispatch(importRepo(data));
-    dispatch(clearTerminal());
     dispatch(
-      addLine({
-        type: 'output',
-        content: `Connected to GitLab ${parsed.projectPath}: ${repoStats.commits} commits, ${repoStats.branches} branches, ${repoStats.tags} tags`,
+      setGitLabContext({
+        instanceUrl: parsed.instanceUrl,
+        projectPath: parsed.projectPath,
+        token: token.trim(),
       }),
     );
+    dispatch(clearPipelines());
 
     setTimeout(() => {
       handleClose();
@@ -220,8 +222,8 @@ export default function ConnectGitLabModal({ isOpen, onClose }: Props) {
                   >
                     <p className="text-xs text-text-secondary leading-relaxed">
                       Create a GitLab Personal Access Token with{' '}
-                      <strong className="text-text-primary">read_api</strong> or{' '}
-                      <strong className="text-text-primary">read_repository</strong> scope.
+                      <strong className="text-text-primary">read_api</strong> scope
+                      (required for pipeline status in the Office view).
                     </p>
                     <a
                       href="https://gitlab.com/-/user_settings/personal_access_tokens"
