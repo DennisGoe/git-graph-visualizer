@@ -881,22 +881,220 @@ function Whiteboard({ x, y, w, h }: { x: number; y: number; w: number; h: number
   );
 }
 
-// Pendant light hanging down from the top edge
-function PendantLight({ x }: { x: number }) {
-  const cordTop = WALL_H - 4;
-  const cordBottom = WALL_H + WALL_CAP_H + 18;
+// ---------- Floor lamp with police-siren head ------------------------------
+// Tall floor lamp standing behind each desk. The bulb on top is styled as a
+// police-siren dome and *rotates* when the pipeline is running (blue) or has
+// failed (red). Idle/success (green), waiting (amber) and off (gray) stay
+// static so the scene doesn't strobe when everything is fine.
+const LAMP_HEIGHT = 140;   // stem + dome
+const LAMP_BASE_OFFSET = 52; // base sits this far below DESK_ROW_Y (hidden by desk)
+
+function FloorLamp({
+  x,
+  statusColor,
+  rotating,
+}: {
+  x: number;
+  statusColor?: string;
+  rotating: boolean;
+}) {
+  const baseY = DESK_ROW_Y + LAMP_BASE_OFFSET;       // floor level (under desk)
+  const topY = baseY - LAMP_HEIGHT;                  // where the siren sits
+  const domeCx = x;
+  const domeCy = topY + 6;
+  const domeR = 10;
+  const housingY = topY + 11;
+
+  const hasStatus = Boolean(statusColor);
+  const bulbColor = statusColor ?? '#ffe08a';
+  // Red (failed) spins fastest; blue (running) a touch slower.
+  const rotSpeed = statusColor === '#ef4444' ? '0.7s' : '1.2s';
+
   return (
     <g>
-      <rect x={x - 0.5} y={cordTop} width={1} height={cordBottom - cordTop - 10} fill="#222" />
-      <polygon
-        points={`${x - 12},${cordBottom - 10} ${x + 12},${cordBottom - 10} ${x + 8},${cordBottom} ${x - 8},${cordBottom}`}
-        fill="#2a2a2a"
+      {/* Floor shadow under the base (mostly covered by the desk) */}
+      <ellipse cx={x} cy={baseY + 3} rx={14} ry={4} fill="#000" opacity={0.35} />
+
+      {/* Round weighted base */}
+      <ellipse cx={x} cy={baseY} rx={12} ry={3.5} fill="#1a1a1a" />
+      <ellipse cx={x} cy={baseY - 1} rx={12} ry={3.5} fill="#3a3a3a" />
+      <ellipse cx={x} cy={baseY - 1.5} rx={9} ry={2.2} fill="#555" />
+
+      {/* Tall thin pole */}
+      <rect x={x - 1.5} y={topY + 14} width={3} height={baseY - topY - 14} fill="#2a2a2a" />
+      <rect x={x - 1.5} y={topY + 14} width={1} height={baseY - topY - 14} fill="#4a4a4a" />
+
+      {/* Siren black housing under the dome */}
+      <rect x={x - 12} y={housingY} width={24} height={4} fill="#141414" />
+      <rect x={x - 12} y={housingY} width={24} height={1} fill="#3a3a3a" />
+      <rect x={x - 13} y={housingY + 3} width={26} height={2} fill="#050505" />
+
+      {/* Rotating beam (only for blue/red) — drawn under the dome so the
+          dome glass tints it. Beam extends outward from the dome. */}
+      {rotating && hasStatus && (
+        <g>
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from={`0 ${domeCx} ${domeCy}`}
+            to={`360 ${domeCx} ${domeCy}`}
+            dur={rotSpeed}
+            repeatCount="indefinite"
+          />
+          {/* long soft searchlight cone */}
+          <polygon
+            points={`${domeCx},${domeCy} ${domeCx - 70},${domeCy - 18} ${domeCx - 70},${domeCy + 18}`}
+            fill={bulbColor}
+            opacity={0.22}
+          />
+          {/* tighter bright cone */}
+          <polygon
+            points={`${domeCx},${domeCy} ${domeCx - 34},${domeCy - 7} ${domeCx - 34},${domeCy + 7}`}
+            fill={bulbColor}
+            opacity={0.6}
+          />
+          {/* hot spot (the rotating bulb itself) */}
+          <circle cx={domeCx - 5} cy={domeCy} r={3.5} fill={bulbColor} />
+          <circle cx={domeCx - 5} cy={domeCy} r={2} fill="#fff" />
+        </g>
+      )}
+
+      {/* Siren dome (half-sphere glass) */}
+      <path
+        d={`M ${domeCx - domeR} ${housingY} A ${domeR} ${domeR} 0 0 1 ${domeCx + domeR} ${housingY} Z`}
+        fill={bulbColor}
+        opacity={rotating ? 0.28 : 0.35}
       />
-      <rect x={x - 8} y={cordBottom} width={16} height={2} fill="#ffe08a" />
-      {/* glow */}
-      <ellipse cx={x} cy={cordBottom + 10} rx={24} ry={14} fill="#ffe08a" opacity={0.12} />
+      <path
+        d={`M ${domeCx - domeR} ${housingY} A ${domeR} ${domeR} 0 0 1 ${domeCx + domeR} ${housingY}`}
+        fill="none"
+        stroke={bulbColor}
+        strokeWidth={1.2}
+        opacity={0.85}
+      />
+
+      {/* Static inner bulb when the dome isn't rotating */}
+      {!rotating && (
+        <circle cx={domeCx} cy={domeCy - 1} r={4} fill={bulbColor} />
+      )}
+
+      {/* Glass highlight */}
+      <ellipse cx={domeCx - 4} cy={topY + 3} rx={3} ry={1.5} fill="#fff" opacity={0.65} />
+
+      {/* Ambient wall glow — brighter/larger when rotating */}
+      {hasStatus && (
+        <ellipse
+          cx={domeCx}
+          cy={housingY + 3}
+          rx={rotating ? 42 : 24}
+          ry={rotating ? 22 : 13}
+          fill={bulbColor}
+          opacity={rotating ? 0.32 : 0.22}
+          pointerEvents="none"
+        >
+          {rotating && (
+            <animate
+              attributeName="opacity"
+              values="0.22;0.5;0.22"
+              dur={rotSpeed}
+              repeatCount="indefinite"
+            />
+          )}
+        </ellipse>
+      )}
     </g>
   );
+}
+
+// ---------- Small rotating red alarm siren (wall-mounted) ------------------
+// Shown in multiple places around the office whenever any branch's pipeline
+// has failed. Rotates silently — classic "red alert" feel.
+function AlarmLight({
+  x,
+  y,
+  size = 1,
+  phase = 0,
+}: {
+  x: number;
+  y: number;
+  size?: number;
+  phase?: number; // 0..1 — staggers rotation starting angle
+}) {
+  const r = 5 * size;
+  const color = '#ef4444';
+  const speed = '0.7s';
+  const startAngle = Math.round(phase * 360);
+  const cy = y + r * 0.4;
+
+  return (
+    <g>
+      {/* housing */}
+      <rect x={x - r - 1} y={y + r} width={(r + 1) * 2} height={2} fill="#141414" />
+
+      {/* rotating beam — under the dome */}
+      <g>
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from={`${startAngle} ${x} ${cy}`}
+          to={`${startAngle + 360} ${x} ${cy}`}
+          dur={speed}
+          repeatCount="indefinite"
+        />
+        <polygon
+          points={`${x},${cy} ${x - 28 * size},${cy - 7 * size} ${x - 28 * size},${cy + 7 * size}`}
+          fill={color}
+          opacity={0.35}
+        />
+        <polygon
+          points={`${x},${cy} ${x - 14 * size},${cy - 3 * size} ${x - 14 * size},${cy + 3 * size}`}
+          fill={color}
+          opacity={0.7}
+        />
+        <circle cx={x - r * 0.6} cy={cy} r={1.8 * size} fill="#fff" />
+      </g>
+
+      {/* dome (drawn over beam so the glass tints it) */}
+      <path
+        d={`M ${x - r} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y + r} Z`}
+        fill={color}
+        opacity={0.35}
+      />
+      <path
+        d={`M ${x - r} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y + r}`}
+        fill="none"
+        stroke={color}
+        strokeWidth={1}
+        opacity={0.9}
+      />
+      <ellipse cx={x - r * 0.4} cy={y + r * 0.3} rx={r * 0.35} ry={r * 0.18} fill="#fff" opacity={0.6} />
+
+      {/* pulsing glow */}
+      <ellipse cx={x} cy={y + r + 2} rx={r * 3} ry={r * 1.8} fill={color} opacity={0.22} pointerEvents="none">
+        <animate attributeName="opacity" values="0.12;0.38;0.12" dur={speed} repeatCount="indefinite" />
+      </ellipse>
+    </g>
+  );
+}
+
+// ---------- Status bulb color mapping ---------------------------------------
+// Only branches whose most recent pipeline actually ran get a colored bulb;
+// branches with no CI history (rawStatus 'none' / 'error') keep the neutral
+// warm pendant light.
+function statusBulbColor(
+  state: PipelineState,
+  rawStatus: string | undefined,
+): string | undefined {
+  if (state === 'working') return '#58a6ff'; // running — blue
+  if (state === 'failed') return '#ef4444'; // failed — red
+  if (state === 'waiting') return '#d29922'; // pending — amber
+  if (state === 'off') return '#6a6a6a'; // canceled — gray
+  // state === 'idle' covers success / manual / skipped / no-pipeline.
+  // Only light up green when an actual successful pipeline is recorded.
+  if (state === 'idle' && rawStatus && rawStatus !== 'none' && rawStatus !== 'error') {
+    return '#3fb950'; // success — green
+  }
+  return undefined;
 }
 
 // ===================================================================
@@ -916,6 +1114,11 @@ export default function OfficeScene({ activeBranches }: Props) {
 
   // Where to start the desks (centered in the middle strip)
   const desksStartX = (roomW - deskRowW) / 2;
+
+  // Any failed pipeline triggers the office-wide red alarm sirens.
+  const hasFailure = activeBranches.some(
+    (b) => pipelines[b.name]?.state === 'failed',
+  );
 
   return (
     <svg
@@ -980,14 +1183,6 @@ export default function OfficeScene({ activeBranches }: Props) {
       {/* Whiteboard below the poster (if room permits) */}
       {roomW > 1100 && <Whiteboard x={roomW - 280} y={108} w={118} h={64} />}
 
-      {/* Pendant lights aligned with desks */}
-      {activeBranches.map((_, i) => (
-        <PendantLight
-          key={`pl-${i}`}
-          x={desksStartX + i * (DESK_W + DESK_GAP) + DESK_W / 2}
-        />
-      ))}
-
       {/* ---- Floor ---- */}
       <Floor width={roomW} height={roomH} />
 
@@ -1044,6 +1239,25 @@ export default function OfficeScene({ activeBranches }: Props) {
         );
       })}
 
+      {/* Floor lamps standing behind each desk — drawn BEFORE the desks so
+           the pole and base are covered by the desk top, making the lamp look
+           like it stands behind the desk. The police-siren head sits above
+           the desk on the wall and rotates on running (blue) / failed (red). */}
+      {activeBranches.map((branch, i) => {
+        const pipe = pipelines[branch.name];
+        const state: PipelineState = pipe?.state ?? 'idle';
+        const statusColor = statusBulbColor(state, pipe?.rawStatus);
+        const rotating = state === 'working' || state === 'failed';
+        return (
+          <FloorLamp
+            key={`fl-${branch.name}`}
+            x={desksStartX + i * (DESK_W + DESK_GAP) + DESK_W / 2}
+            statusColor={statusColor}
+            rotating={rotating}
+          />
+        );
+      })}
+
       {/* Desks drawn AFTER chairs but BEFORE characters so the character's upper body overlaps the desk when sitting */}
       {activeBranches.map((branch, i) => {
         const pipe = pipelines[branch.name];
@@ -1089,6 +1303,60 @@ export default function OfficeScene({ activeBranches }: Props) {
           />
         );
       })}
+
+      {/* Office-wide red alarm sirens — triggered by any failed pipeline.
+           Rotate silently. Staggered starting phases so they don't all flash
+           in sync. */}
+      {hasFailure && (
+        <g>
+          {/* subtle room-wide red tint (pulsing) */}
+          <rect
+            x={0}
+            y={0}
+            width={roomW}
+            height={roomH}
+            fill="#ef4444"
+            opacity={0.05}
+            pointerEvents="none"
+          >
+            <animate
+              attributeName="opacity"
+              values="0.03;0.1;0.03"
+              dur="0.7s"
+              repeatCount="indefinite"
+            />
+          </rect>
+
+          {/* top-left: above the shelf */}
+          <AlarmLight x={24} y={30} size={1} phase={0} />
+          {/* top-left corner: near hanging plant */}
+          <AlarmLight x={150} y={24} size={0.9} phase={0.25} />
+          {/* between shelf area and first window */}
+          <AlarmLight x={roomW / 2 - 180} y={18} size={0.85} phase={0.5} />
+          {/* above the windows (center) */}
+          <AlarmLight x={roomW / 2} y={12} size={1} phase={0.15} />
+          {/* between last window and posters */}
+          <AlarmLight x={roomW / 2 + 180} y={18} size={0.85} phase={0.75} />
+          {/* top-right corner */}
+          <AlarmLight x={roomW - 150} y={24} size={0.9} phase={0.4} />
+          {/* top-right: near posters */}
+          <AlarmLight x={roomW - 24} y={30} size={1} phase={0.6} />
+          {/* lower left: near sofa area */}
+          <AlarmLight
+            x={30}
+            y={DESK_ROW_Y + DESK_H + 110}
+            size={0.9}
+            phase={0.35}
+          />
+          {/* lower right: near coffee station */}
+          <AlarmLight
+            x={roomW - 30}
+            y={DESK_ROW_Y + DESK_H + 110}
+            size={0.9}
+            phase={0.85}
+          />
+        </g>
+      )}
 
       {/* Subtle scene vignette at the bottom */}
       <rect x={0} y={0} width={roomW} height={roomH} fill="url(#sceneFade)" pointerEvents="none" />
